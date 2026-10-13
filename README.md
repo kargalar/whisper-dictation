@@ -4,57 +4,54 @@
 
 **Private, offline speech-to-text for Windows.**
 
-Speak anywhere. Whisper Dictation types the transcription into your active app and keeps your audio on your computer.
+Speak into any app and get an English transcript without sending audio to a server.
 
-[Download for Windows](../../releases/latest) · [Report a bug](../../issues) · [Build from source](#build-from-source)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows)](https://github.com/kargalar/whisper-dictation/releases/latest) [![Release](https://img.shields.io/github/v/release/kargalar/whisper-dictation?color=E53935)](https://github.com/kargalar/whisper-dictation/releases/latest) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+
+[Download for Windows ↓](https://github.com/kargalar/whisper-dictation/releases/latest) · [Build from source](#build-from-source) · [Report an issue](https://github.com/kargalar/whisper-dictation/issues)
 
 </div>
 
+![Whisper Dictation ready for offline dictation](docs/screenshots/whisper-ready.png)
+
+## Speak and keep moving
+
+Press **Shift + Space** to record, speak naturally, then press the shortcut again. Whisper Dictation transcribes locally and types the result into the focused app.
+
 ## Features
 
-- **Runs locally:** bundled Whisper models transcribe audio on your PC. The app makes no network connection.
-- **Works across apps:** use `Shift+Space` to start or stop dictation in the focused window.
-- **CPU-only release:** runs on Windows without requiring a CUDA installation. CUDA-enabled packages can be built from source.
-- **Keeps a transcript history:** review, copy, or clear saved text whenever you need it.
-- **Portable:** extract the release ZIP into a writable folder and run `WhisperDictation.exe`.
-- **English recognition:** the bundled app is configured for English transcription.
+- Transcribe speech on-device with bundled Whisper models.
+- Use the global shortcut in text fields across Windows apps.
+- Keep audio off disk and transcripts in a local history.
+- Run in CPU mode without a CUDA installation.
+- Build an optional CUDA-enabled version from source.
 
 ## Download and run
 
-1. Download all three `WhisperDictation-win-x64.zip.00x` parts from [Releases](../../releases/latest) into the same folder.
-2. Join the parts in order from Command Prompt: `copy /b WhisperDictation-win-x64.zip.001+WhisperDictation-win-x64.zip.002+WhisperDictation-win-x64.zip.003 WhisperDictation-win-x64.zip`.
-3. Extract the joined archive to a writable folder, such as `Documents\Whisper Dictation`.
-4. Run `WhisperDictation.exe`.
-5. Wait for **Ready to dictate**, focus a text field in any app, then press `Shift+Space` to start and stop.
+Download all numbered parts of `WhisperDictation-win-x64.zip` from [Releases](https://github.com/kargalar/whisper-dictation/releases/latest), place them in one folder, and join them in Command Prompt:
 
-The app starts in the system tray if **Start with Windows** is enabled. Closing the window minimizes it to the tray; right-click the tray icon and select **Quit** to exit.
+```bat
+copy /b WhisperDictation-win-x64.zip.001+WhisperDictation-win-x64.zip.002+WhisperDictation-win-x64.zip.003 WhisperDictation-win-x64.zip
+```
 
-## Privacy and local data
-
-Audio is processed in memory and is not written to disk. Transcriptions and settings are stored in the app's `data` folder. This folder is not encrypted, so protect it with your Windows account and filesystem permissions. Use **Clear history** to delete saved transcriptions.
+Extract the archive into a writable folder and run `WhisperDictation.exe`. Wait for **Ready to dictate**, focus a text field, and press **Shift + Space**. Closing the window minimizes the app to the system tray; use **Quit** in the tray menu to exit.
 
 ## Build from source
 
-Requirements: Windows x64, the .NET 10 SDK, PowerShell, and (for the GPU build) the CUDA 13 Toolkit. The release ZIP is self-contained and includes its runtime, native dependencies, and Whisper models.
+Requirements: Windows x64 and the .NET 10 SDK. CUDA Toolkit 13 is only needed for a GPU build.
 
 ```powershell
 dotnet restore WhisperDictation.slnx --locked-mode
 dotnet build WhisperDictation.slnx
 dotnet test WhisperDictation.slnx
-dotnet format WhisperDictation.slnx --verify-no-changes --no-restore
-./download-models.ps1
-./build.ps1
 ```
 
-For a CPU-only package, run `./build.ps1 -CpuOnly`. Model files are downloaded only by the developer script and checked against the pinned SHA-256 hashes in `models/catalog.json`.
+See the release workflow for packaging commands and model assets.
 
-The optional microphone integration test records a short sample in memory and deletes it after the test:
+## Privacy
 
-```powershell
-$env:WHISPER_TEST_MICROPHONE = '1'
-dotnet test WhisperDictation.slnx
-```
+Audio is processed in memory. Transcripts and settings are saved under the app's local `data` folder and are not encrypted; protect that folder with your Windows account.
 
 ## License
 
-Whisper Dictation is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE). Third-party notices and model terms are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Whisper Dictation is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
