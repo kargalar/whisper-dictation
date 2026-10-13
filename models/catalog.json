@@ -1,0 +1,18 @@
+{
+  "repository": "ggerganov/whisper.cpp",
+  "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "models": [
+    {
+      "id": "Turbo",
+      "fileName": "ggml-large-v3-turbo.bin",
+      "size": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+    },
+    {
+      "id": "Large",
+      "fileName": "ggml-large-v3.bin",
+      "size": 3095033483,
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
+    }
+  ]
+}

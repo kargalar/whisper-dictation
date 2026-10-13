@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WhisperDictation.Core/WhisperDictation.Core.csproj" />
+    <Project Path="src/WhisperDictation.Desktop/WhisperDictation.Desktop.csproj" />
+    <Project Path="src/WhisperDictation.Worker/WhisperDictation.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WhisperDictation.InputProbe/WhisperDictation.InputProbe.csproj" />
+    <Project Path="tests/WhisperDictation.Tests/WhisperDictation.Tests.csproj" />
+  </Folder>
+</Solution>

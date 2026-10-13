@@ -1,0 +1,307 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using WhisperDictation.Core;
+using WhisperDictation.Desktop.Services;
+
+namespace WhisperDictation.Desktop.ViewModels;
+
+public sealed record ComputeChoice(ComputeMode Mode, string Name);
+
+public partial class MainViewModel : ObservableObject
+{
+    private readonly SettingsStore settingsStore;
+    private readonly IHistoryStore historyStore;
+    private readonly DictationController controller;
+    private readonly ITranscriber transcriber;
+    private readonly GlobalHotkeyService hotkeyService;
+    private readonly WindowsStartupService windowsStartupService;
+    private AppSettings activeSettings;
+    private HotkeyAction activeRecordingAction;
+    private int nextWaveformBar;
+    private bool initialized;
+
+    [ObservableProperty] private string status = UiText.Idle;
+    [ObservableProperty] private string lastText = "";
+    [ObservableProperty] private string engine = UiText.UnknownEngine;
+    [ObservableProperty] private string hotkey = AppDefaults.DefaultHotkey;
+    [ObservableProperty] private string activeHotkey = AppDefaults.DefaultHotkey;
+    [ObservableProperty] private bool isCapturingHotkey;
+    [ObservableProperty] private bool startWithWindows;
+    [ObservableProperty] private ModelChoice selectedModel = ModelChoice.All[0];
+    [ObservableProperty] private MicrophoneChoice? selectedMicrophone;
+    [ObservableProperty] private ComputeChoice selectedCompute;
+    [ObservableProperty] private bool isBusy;
+    [ObservableProperty] private bool isRecording;
+    [ObservableProperty] private bool showOverlay;
+
+    public IReadOnlyList<ModelChoice> Models => ModelChoice.All;
+    public IReadOnlyList<ComputeChoice> ComputeChoices { get; } =
+    [new(ComputeMode.Automatic, UiText.AutomaticCompute), new(ComputeMode.Cpu, UiText.CpuCompute)];
+    public ObservableCollection<MicrophoneChoice> Microphones { get; } = [];
+    public ObservableCollection<HistoryEntry> History { get; } = [];
+    public ObservableCollection<double> AudioWaveform { get; } = [3, 3, 3, 3, 3, 3, 3];
+    public bool CanConfigure => !IsBusy;
+    public bool HasText => !string.IsNullOrEmpty(LastText);
+    public string HotkeyCaptureDisplay => IsCapturingHotkey ? UiText.HotkeyCapturePrompt : Hotkey;
+
+    public MainViewModel(SettingsStore settingsStore, IHistoryStore historyStore, DictationController controller,
+        ITranscriber transcriber, GlobalHotkeyService hotkeyService, AppSettings settings,
+        WindowsStartupService? windowsStartupService = null)
+    {
+        this.settingsStore = settingsStore;
+        this.historyStore = historyStore;
+        this.controller = controller;
+        this.transcriber = transcriber;
+        this.hotkeyService = hotkeyService;
+        this.windowsStartupService = windowsStartupService ?? new();
+        activeSettings = settings;
+        selectedCompute = ComputeChoices.First(choice => choice.Mode == settings.ComputeMode);
+        SelectedModel = Models.First(choice => choice.Kind == settings.SelectedModel);
+        Hotkey = ActiveHotkey = settings.Hotkey;
+        StartWithWindows = settings.StartWithWindows;
+        RefreshMicrophones();
+        SelectedMicrophone = Microphones.FirstOrDefault(choice => choice.Id == settings.MicrophoneId) ?? Microphones.First();
+        controller.Changed += UpdateState;
+        controller.HistoryAdded += entry => History.Insert(0, entry);
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            foreach (var entry in await historyStore.ReadAsync()) History.Add(entry);
+        }
+        catch (Exception) { Status = UiText.HistoryReadFailed; }
+        await controller.PrepareAsync(settingsStore.GetModelPath(activeSettings.SelectedModel), activeSettings.ComputeMode);
+        initialized = true;
+    }
+
+    public async Task HandleHotkeyAsync(HotkeyAction action)
+    {
+        switch (action)
+        {
+            case HotkeyAction.Stop:
+                if (activeRecordingAction == HotkeyAction.Toggle)
+                {
+                    activeRecordingAction = HotkeyAction.None;
+                    await controller.StopAsync();
+                }
+                break;
+            case HotkeyAction.Toggle:
+                if (controller.State == DictationState.Recording)
+                {
+                    activeRecordingAction = HotkeyAction.None;
+                    await controller.StopAsync();
+                }
+                else
+                {
+                    controller.Start(activeSettings);
+                    activeRecordingAction = controller.State == DictationState.Recording
+                        ? HotkeyAction.Toggle : HotkeyAction.None;
+                }
+                break;
+            case HotkeyAction.Cancel: await controller.CancelAsync(); break;
+        }
+        if (action == HotkeyAction.Cancel)
+            activeRecordingAction = HotkeyAction.None;
+    }
+
+    public Task CancelAsync(string? message = null) => controller.CancelAsync(message);
+    public Task StopAsync() => controller.StopAsync();
+    public void SetAudioLevel(float level)
+    {
+        var audioLevel = Math.Min(100, level * 200);
+        AudioWaveform[nextWaveformBar] = audioLevel == 0 ? 3 : 3 + audioLevel * 0.15;
+        nextWaveformBar = (nextWaveformBar + 1) % AudioWaveform.Count;
+    }
+
+    public void BeginHotkeyCapture()
+    {
+        if (IsCapturingHotkey || !CanConfigure)
+            return;
+        hotkeyService.BeginCapture();
+        IsCapturingHotkey = true;
+    }
+
+    public void CancelHotkeyCapture()
+    {
+        if (!IsCapturingHotkey)
+            return;
+        hotkeyService.EndCapture();
+        IsCapturingHotkey = false;
+    }
+
+    public void CaptureHotkey(KeyModifiers modifiers, int virtualKey)
+    {
+        if (!IsCapturingHotkey)
+            return;
+        if (!HotkeyChord.TryCreate(modifiers, virtualKey, out var chord))
+        {
+            Status = UiText.InvalidHotkey;
+            return;
+        }
+        try
+        {
+            var display = chord!.ToDisplayString();
+            var updatedSettings = activeSettings with { Hotkey = display };
+            settingsStore.Save(updatedSettings);
+            activeSettings = updatedSettings;
+            Hotkey = ActiveHotkey = updatedSettings.Hotkey;
+            HotkeyChord.TryParse(updatedSettings.Hotkey, out var updatedChord);
+            hotkeyService.Update(updatedChord!);
+            IsCapturingHotkey = false;
+            Status = UiText.HotkeySaved;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            CancelHotkeyCapture();
+            Status = UiText.StorageFailed;
+        }
+    }
+
+    private void UpdateState()
+    {
+        Status = controller.Status;
+        LastText = controller.LastText;
+        Engine = transcriber.Engine;
+        IsBusy = controller.IsBusy;
+        IsRecording = controller.State == DictationState.Recording;
+        if (controller.State != DictationState.Recording)
+            activeRecordingAction = HotkeyAction.None;
+        ShowOverlay = IsBusy || controller.State == DictationState.Error;
+        hotkeyService.CancellationAvailable = IsBusy;
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanConfigure));
+        ApplySettingsCommand.NotifyCanExecuteChanged();
+        RefreshMicrophonesCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnLastTextChanged(string value) => OnPropertyChanged(nameof(HasText));
+    partial void OnHotkeyChanged(string value) => OnPropertyChanged(nameof(HotkeyCaptureDisplay));
+    partial void OnIsCapturingHotkeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HotkeyCaptureDisplay));
+    }
+
+    partial void OnSelectedModelChanged(ModelChoice value)
+    {
+        if (initialized && CanConfigure)
+            _ = ChangeModelAsync(value.Kind);
+    }
+
+    private async Task ChangeModelAsync(ModelKind model)
+    {
+        try
+        {
+            var settings = activeSettings with { SelectedModel = model };
+            settingsStore.Save(settings);
+            activeSettings = settings;
+            await controller.PrepareAsync(settingsStore.GetModelPath(model), settings.ComputeMode);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            initialized = false;
+            SelectedModel = Models.First(choice => choice.Kind == activeSettings.SelectedModel);
+            initialized = true;
+            Status = UiText.StorageFailed;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanConfigure))]
+    private async Task ApplySettingsAsync()
+    {
+        if (!HotkeyChord.TryParse(Hotkey, out var chord))
+        {
+            Status = UiText.InvalidHotkey;
+            return;
+        }
+        try
+        {
+            var settings = activeSettings with
+            {
+                SelectedModel = SelectedModel.Kind,
+                ComputeMode = SelectedCompute.Mode,
+                MicrophoneId = SelectedMicrophone?.Id ?? "",
+                Hotkey = Hotkey.Trim(),
+                StartWithWindows = StartWithWindows
+            };
+            var startupSettingChanged = settings.StartWithWindows != activeSettings.StartWithWindows;
+            if (startupSettingChanged)
+                windowsStartupService.SetEnabled(settings.StartWithWindows);
+            try
+            {
+                settingsStore.Save(settings);
+            }
+            catch
+            {
+                if (startupSettingChanged)
+                    windowsStartupService.SetEnabled(activeSettings.StartWithWindows);
+                throw;
+            }
+            var reloadEngine = settings.SelectedModel != activeSettings.SelectedModel
+                || settings.ComputeMode != activeSettings.ComputeMode || !transcriber.IsReady;
+            activeSettings = settings;
+            hotkeyService.Update(chord!);
+            ActiveHotkey = settings.Hotkey;
+            if (reloadEngine)
+                await controller.PrepareAsync(settingsStore.GetModelPath(settings.SelectedModel), settings.ComputeMode);
+            else Status = UiText.SettingsSaved;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException
+            or Win32Exception or InvalidOperationException)
+        { Status = UiText.StartupFailed; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanConfigure))]
+    private void RefreshMicrophones()
+    {
+        try
+        {
+            var oldId = SelectedMicrophone?.Id;
+            Microphones.Clear();
+            foreach (var choice in AudioCaptureService.GetMicrophones()) Microphones.Add(choice);
+            SelectedMicrophone = Microphones.FirstOrDefault(choice => choice.Id == oldId) ?? Microphones.First();
+        }
+        catch (Exception)
+        {
+            if (Microphones.Count == 0) Microphones.Add(new("", UiText.DefaultMicrophone));
+            SelectedMicrophone = Microphones.First();
+            Status = UiText.MicrophoneFailed;
+        }
+    }
+
+    [RelayCommand] private void CopyLast() => CopyText(LastText);
+    [RelayCommand] private void CopyEntry(HistoryEntry? entry) { if (entry is not null) CopyText(entry.Text); }
+
+    private void CopyText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try { Clipboard.SetText(text); Status = UiText.Copied; }
+        catch (ExternalException) { Status = UiText.CopyFailed; }
+    }
+
+    [RelayCommand]
+    private async Task DeleteEntryAsync(HistoryEntry? entry)
+    {
+        if (entry is null) return;
+        try { await historyStore.DeleteAsync(entry.Id); History.Remove(entry); }
+        catch (Exception) { Status = UiText.HistoryReadFailed; }
+    }
+
+    [RelayCommand]
+    private async Task ClearHistoryAsync()
+    {
+        if (MessageBox.Show(UiText.ConfirmClearHistory, UiText.Title, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        try { await historyStore.ClearAsync(); History.Clear(); Status = UiText.HistoryCleared; }
+        catch (Exception) { Status = UiText.HistoryReadFailed; }
+    }
+}

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>WhisperDictation</AssemblyName>
+    <AssemblyTitle>Whisper Dictation</AssemblyTitle>
+    <Product>Whisper Dictation</Product>
+    <Description>Private, offline English speech-to-text for Windows.</Description>
+    <ApplicationIcon>Assets/WhisperDikte.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF owns DPI configuration; WinForms is used only for NotifyIcon. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WhisperDictation.Core/WhisperDictation.Core.csproj" />
+    <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <Content Include="Assets/WhisperDikte.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyWorker" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == ''">
+    <MSBuild Projects="../WhisperDictation.Worker/WhisperDictation.Worker.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <WorkerFiles Include="../WhisperDictation.Worker/bin/$(Configuration)/net10.0/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WorkerFiles)" DestinationFiles="@(WorkerFiles->'$(OutDir)worker/%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>
