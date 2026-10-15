@@ -9,7 +9,7 @@
     <AssemblyName>WhisperDictation</AssemblyName>
     <AssemblyTitle>Whisper Dictation</AssemblyTitle>
     <Product>Whisper Dictation</Product>
-    <Description>Private, offline English speech-to-text for Windows.</Description>
+    <Description>Private, offline speech-to-text for Windows.</Description>
     <ApplicationIcon>Assets/WhisperDikte.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF owns DPI configuration; WinForms is used only for NotifyIcon. -->

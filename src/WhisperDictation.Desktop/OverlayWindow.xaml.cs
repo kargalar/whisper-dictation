@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using WhisperDictation.Core;
+using Forms = System.Windows.Forms;
 
 namespace WhisperDictation.Desktop;
 
@@ -36,10 +37,15 @@ public partial class OverlayWindow : Window
 
     public void Display()
     {
-        var area = SystemParameters.WorkArea;
+        PositionOnCursorScreen();
+        Show();
+    }
+
+    public void PositionOnCursorScreen()
+    {
+        var area = Forms.Screen.FromPoint(Forms.Cursor.Position).WorkingArea;
         Left = area.Left + (area.Width - Width) / 2;
         Top = area.Bottom - Height - 24;
-        Show();
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]

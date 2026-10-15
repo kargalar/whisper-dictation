@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using WhisperDictation.Core;
 using Xunit;
 
@@ -43,6 +44,56 @@ public sealed class StorageAndProtocolTests : IDisposable
         Assert.Equal(path, store.GetModelPath(reopened.SelectedModel));
         var movedRoot = Path.Combine(root, "moved");
         Assert.Equal(Path.Combine(movedRoot, "models", "ggml-large-v3.bin"), new SettingsStore(movedRoot).GetModelPath(reopened.SelectedModel));
+    }
+
+    [Fact]
+    public void FirstRunUsesSystemLanguageAndRememberedSettingsTakePrecedence()
+    {
+        var originalCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("tr-TR");
+            Assert.Equal("tr", new SettingsStore(root).Load().Language);
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+            Assert.Equal("tr", new SettingsStore(root).Load().Language);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = originalCulture;
+        }
+        var store = new SettingsStore(root);
+        store.Save(new AppSettings { Language = "tr", OutputMode = OutputMode.TranslateToEnglish });
+        var loaded = new SettingsStore(root).Load();
+        Assert.Equal("tr", loaded.Language);
+        Assert.Equal(OutputMode.TranslateToEnglish, loaded.OutputMode);
+        Assert.Equal(ModelKind.Large, loaded.SelectedModel);
+    }
+
+    [Fact]
+    public void ExistingTurboTranslationSettingsLoadWithCompatibleModelWithoutLosingPreferences()
+    {
+        var store = new SettingsStore(root);
+        Directory.CreateDirectory(store.DataDirectory);
+        File.WriteAllText(Path.Combine(store.DataDirectory, "settings.json"), """
+            { "Language": "tr", "OutputMode": 1, "SelectedModel": 0, "Hotkey": "Ctrl+Shift+F9" }
+            """);
+        var settings = store.Load();
+        Assert.Equal(ModelKind.Large, settings.SelectedModel);
+        Assert.Equal(OutputMode.TranslateToEnglish, settings.OutputMode);
+        Assert.Equal("tr", settings.Language);
+        Assert.Equal("Ctrl+Shift+F9", settings.Hotkey);
+        Assert.False(store.RecoveredDefaults);
+    }
+
+    [Fact]
+    public void UnknownSavedLanguageFallsBackToAutomaticDetection()
+    {
+        var store = new SettingsStore(root);
+        Directory.CreateDirectory(store.DataDirectory);
+        File.WriteAllText(Path.Combine(store.DataDirectory, "settings.json"), """
+            { "Language": "not-a-whisper-language" }
+            """);
+        Assert.Equal(AppDefaults.DefaultLanguage, store.Load().Language);
     }
 
     [Fact]

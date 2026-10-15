@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 
 namespace WhisperDictation.Core;
 
@@ -13,7 +14,11 @@ public sealed class SettingsStore(string rootDirectory)
     {
         Directory.CreateDirectory(DataDirectory);
         if (!File.Exists(SettingsPath))
-            return new();
+        {
+            var initialSettings = new AppSettings { Language = GetSystemLanguage() };
+            Save(initialSettings);
+            return initialSettings;
+        }
 
         try
         {
@@ -21,7 +26,16 @@ public sealed class SettingsStore(string rootDirectory)
             if (settings is null || !Enum.IsDefined(settings.SelectedModel) || !Enum.IsDefined(settings.ComputeMode)
                 || !HotkeyChord.TryParse(settings.LegacyToggleHotkey ?? settings.Hotkey, out var chord))
                 throw new JsonException();
-            return settings with { Hotkey = chord!.ToDisplayString(), LegacyToggleHotkey = null };
+            var language = LanguageChoice.All.Any(choice => choice.Code == settings.Language)
+                ? settings.Language : AppDefaults.DefaultLanguage;
+            var outputMode = Enum.IsDefined(settings.OutputMode) ? settings.OutputMode : OutputMode.Transcribe;
+            return (settings with
+            {
+                Hotkey = chord!.ToDisplayString(),
+                Language = language,
+                OutputMode = outputMode,
+                LegacyToggleHotkey = null
+            }).WithCompatibleModel();
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
@@ -34,11 +48,18 @@ public sealed class SettingsStore(string rootDirectory)
     {
         Directory.CreateDirectory(DataDirectory);
         var temporaryPath = SettingsPath + ".tmp";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings.WithCompatibleModel(), JsonOptions));
         File.Move(temporaryPath, SettingsPath, overwrite: true);
     }
 
     public string GetModelPath(ModelKind model) => Path.Combine(rootDirectory, AppDefaults.ModelDirectoryName,
         ModelChoice.All.Single(choice => choice.Kind == model).FileName);
+
+    private static string GetSystemLanguage()
+    {
+        var systemLanguage = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+        return LanguageChoice.All.Any(choice => choice.Code == systemLanguage)
+            ? systemLanguage : AppDefaults.DefaultLanguage;
+    }
 
 }

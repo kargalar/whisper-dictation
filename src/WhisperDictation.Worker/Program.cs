@@ -17,7 +17,7 @@ internal static class Program
             return Diagnose(backend);
         if (args is ["--diagnose-model", var modelBackend, var diagnosticModel])
             return DiagnoseModel(modelBackend, diagnosticModel);
-        if (args.Length != 4 || !int.TryParse(args[3], out var parentId))
+        if (args.Length != 6 || !int.TryParse(args[5], out var parentId))
             return 2;
         _ = WatchParentAsync(parentId);
         var useGpu = args[2] == "cuda";
@@ -44,8 +44,11 @@ internal static class Program
                 UseFlashAttention = useGpu,
                 GpuDevice = 0
             });
-            using var processor = factory.CreateBuilder()
-                .WithLanguage(AppDefaults.Language)
+            var processorBuilder = factory.CreateBuilder()
+                .WithLanguage(args[3]);
+            if (args[4] == nameof(OutputMode.TranslateToEnglish))
+                processorBuilder.WithTranslate();
+            using var processor = processorBuilder
                 .WithNoContext()
                 .WithTemperature(0)
                 .WithThreads(Math.Max(1, Environment.ProcessorCount / 2))
@@ -121,7 +124,7 @@ internal static class Program
             RuntimeOptions.RuntimeLibraryOrder = useGpu ? [RuntimeLibrary.Cuda] : [RuntimeLibrary.Cpu];
             using var logger = LogProvider.AddConsoleLogging(WhisperLogLevel.Debug);
             using var factory = WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions { UseGpu = useGpu, UseFlashAttention = useGpu, GpuDevice = 0 });
-            using var processor = factory.CreateBuilder().WithLanguage(AppDefaults.Language).Build();
+            using var processor = factory.CreateBuilder().WithLanguage(AppDefaults.DefaultLanguage).Build();
             Console.WriteLine(JsonSerializer.Serialize(new { Success = true, Backend = RuntimeOptions.LoadedLibrary.ToString() }));
             return 0;
         }

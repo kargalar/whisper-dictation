@@ -1,10 +1,45 @@
 using WhisperDictation.Core;
+using WhisperDictation.Desktop.Services;
+using WhisperDictation.Desktop.ViewModels;
 using Xunit;
 
 namespace WhisperDictation.Tests;
 
 public class DictationTests
 {
+    [Fact]
+    public async Task LanguageModeAndModelAreSavedAndAppliedTogether()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Whisper-language-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = new Fixture();
+            var store = new SettingsStore(root);
+            store.Save(new());
+            HotkeyChord.TryParse(AppDefaults.DefaultHotkey, out var chord);
+            using var hotkeys = new GlobalHotkeyService(chord!);
+            var viewModel = new MainViewModel(store, fixture.History, fixture.Controller, fixture.Engine, hotkeys, new());
+
+            viewModel.SelectedLanguage = viewModel.Languages.Single(choice => choice.Code == "tr");
+            viewModel.SelectedOutputMode = viewModel.OutputModes.Single(choice => choice.Mode == OutputMode.TranslateToEnglish);
+            Assert.Equal(ModelKind.Large, viewModel.SelectedModel.Kind);
+            Assert.False(viewModel.CanSelectModel);
+            Assert.Empty(fixture.Engine.PreparedPath);
+            await Task.Delay(400);
+
+            Assert.Equal(ModelKind.Large, store.Load().SelectedModel);
+            Assert.Equal("tr", fixture.Engine.PreparedLanguage);
+            Assert.Equal(OutputMode.TranslateToEnglish, fixture.Engine.PreparedOutputMode);
+            Assert.Equal(store.GetModelPath(ModelKind.Large), fixture.Engine.PreparedPath);
+            viewModel.SelectedOutputMode = viewModel.OutputModes.Single(choice => choice.Mode == OutputMode.Transcribe);
+            Assert.True(viewModel.CanSelectModel);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task ReleasedDictationIsSavedAndInsertedExactlyOnce()
     {
@@ -154,12 +189,16 @@ public class DictationTests
         public bool BlockPreparation { get; set; }
         public string PreparedPath { get; private set; } = "";
         public ComputeMode PreparedMode { get; private set; }
+        public string PreparedLanguage { get; private set; } = "";
+        public OutputMode PreparedOutputMode { get; private set; }
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Prepared { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async Task PrepareAsync(string path, ComputeMode mode, CancellationToken token)
+        public async Task PrepareAsync(string path, ComputeMode mode, string language, OutputMode outputMode, CancellationToken token)
         {
             PreparedPath = path;
             PreparedMode = mode;
+            PreparedLanguage = language;
+            PreparedOutputMode = outputMode;
             if (BlockPreparation) await Prepared.Task.WaitAsync(token);
         }
         public async Task<TranscriptionResult> TranscribeAsync(float[] audio, CancellationToken token)

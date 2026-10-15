@@ -20,7 +20,7 @@ public interface ITranscriber
 {
     bool IsReady { get; }
     string Engine { get; }
-    Task PrepareAsync(string modelPath, ComputeMode mode, CancellationToken cancellationToken);
+    Task PrepareAsync(string modelPath, ComputeMode mode, string language, OutputMode outputMode, CancellationToken cancellationToken);
     Task<TranscriptionResult> TranscribeAsync(float[] audio, CancellationToken cancellationToken);
     void Reset();
 }

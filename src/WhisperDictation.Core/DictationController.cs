@@ -13,7 +13,8 @@ public sealed class DictationController(IAudioCapture audio, ITranscriber transc
     public event Action? Changed;
     public event Action<HistoryEntry>? HistoryAdded;
 
-    public async Task PrepareAsync(string path, ComputeMode mode)
+    public async Task PrepareAsync(string path, ComputeMode mode, string language = AppDefaults.DefaultLanguage,
+        OutputMode outputMode = OutputMode.Transcribe)
     {
         if (IsBusy)
             return;
@@ -22,7 +23,7 @@ public sealed class DictationController(IAudioCapture audio, ITranscriber transc
         SetState(DictationState.Loading, UiText.Loading);
         try
         {
-            await transcriber.PrepareAsync(path, mode, cancellation.Token);
+            await transcriber.PrepareAsync(path, mode, language, outputMode, cancellation.Token);
             SetState(DictationState.Idle, UiText.Ready);
         }
         catch (OperationCanceledException) { SetState(DictationState.Idle, UiText.Cancelled); }

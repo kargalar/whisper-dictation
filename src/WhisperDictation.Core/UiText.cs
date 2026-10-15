@@ -23,6 +23,13 @@ public static class UiText
     public const string CancelHelp = "Press Esc to cancel. Recordings can be up to 5 minutes long.";
     public const string NoResult = "Your transcription will appear here.";
     public const string Model = "Model";
+    public const string Language = "Spoken language";
+    public const string LanguageHelp = "Choose Auto-detect to recognize the spoken language, or select a language to guide recognition.";
+    public const string AutoDetectLanguage = "Auto-detect spoken language";
+    public const string OutputMode = "Output mode";
+    public const string TranscribeMode = "Transcribe speech";
+    public const string TranslateToEnglishMode = "Translate speech to English";
+    public const string OutputModeHelp = "Translation uses the Large model automatically. Settings are saved automatically.";
     public const string TurboModelName = "large-v3-turbo · Faster";
     public const string LargeModelName = "large-v3 · Higher accuracy";
     public const string CpuEngine = "CPU";
@@ -38,7 +45,6 @@ public static class UiText
     public const string StartWithWindows = "Start with Windows";
     public const string StartWithWindowsHelp = "Run in the system tray when your computer starts, without opening the window.";
     public const string StartupFailed = "Could not save the Windows startup setting. Try again.";
-    public const string ApplySettings = "Save settings";
     public const string SettingsSaved = "Settings saved";
     public const string AutomaticCompute = "Automatic · NVIDIA GPU / CPU";
     public const string CpuCompute = "CPU only";

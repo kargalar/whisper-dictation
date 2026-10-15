@@ -4,7 +4,7 @@
 
 **Private, offline speech-to-text for Windows.**
 
-Speak into any app and get an English transcript without sending audio to a server.
+Speak into any app and get a transcript in the spoken language, or translate speech to English, without sending audio to a server.
 
 [![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows)](https://github.com/kargalar/whisper-dictation/releases/latest) [![Release](https://img.shields.io/github/v/release/kargalar/whisper-dictation?color=E53935)](https://github.com/kargalar/whisper-dictation/releases/latest) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
@@ -25,6 +25,7 @@ Press **Shift + Space** to record, speak naturally, then press the shortcut agai
 - Keep audio off disk and transcripts in a local history.
 - Run in CPU mode without a CUDA installation.
 - Build an optional CUDA-enabled version from source.
+- Transcribe in the spoken language or translate to English; translation automatically uses Large because Turbo does not support translation.
 
 ## Download and run
 

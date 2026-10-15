@@ -9,18 +9,22 @@ public sealed class WorkerTranscriber : ITranscriber, IDisposable
     private Process? process;
     private NamedPipeServerStream? pipe;
     private string modelPath = "";
+    private string language = AppDefaults.DefaultLanguage;
+    private OutputMode outputMode = OutputMode.Transcribe;
     private ComputeMode mode;
     private bool usingGpu;
     private bool fellBack;
     public bool IsReady => pipe is { IsConnected: true } && process is { HasExited: false };
     public string Engine { get; private set; } = UiText.UnknownEngine;
 
-    public async Task PrepareAsync(string modelPath, ComputeMode mode, CancellationToken cancellationToken)
+    public async Task PrepareAsync(string modelPath, ComputeMode mode, string language, OutputMode outputMode, CancellationToken cancellationToken)
     {
         Reset();
         if (!File.Exists(modelPath))
             throw new InvalidOperationException(UiText.MissingModel);
         this.modelPath = modelPath;
+        this.language = language;
+        this.outputMode = outputMode;
         this.mode = mode;
         fellBack = false;
         try
@@ -47,7 +51,7 @@ public sealed class WorkerTranscriber : ITranscriber, IDisposable
     public async Task<TranscriptionResult> TranscribeAsync(float[] audio, CancellationToken cancellationToken)
     {
         if (!IsReady)
-            await PrepareAsync(modelPath, mode, cancellationToken);
+            await PrepareAsync(modelPath, mode, language, outputMode, cancellationToken);
         try { return await ProcessAudioAsync(audio, cancellationToken); }
         catch (Exception) when (!cancellationToken.IsCancellationRequested && usingGpu)
         {
@@ -77,7 +81,8 @@ public sealed class WorkerTranscriber : ITranscriber, IDisposable
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(workerPath)!
         };
-        foreach (var argument in new[] { pipeName, modelPath, useGpu ? "cuda" : "cpu", Environment.ProcessId.ToString() })
+        foreach (var argument in new[] { pipeName, modelPath, useGpu ? "cuda" : "cpu", language,
+                     outputMode.ToString(), Environment.ProcessId.ToString() })
             startInfo.ArgumentList.Add(argument);
         process = Process.Start(startInfo) ?? throw new InvalidOperationException(UiText.WorkerFailed);
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

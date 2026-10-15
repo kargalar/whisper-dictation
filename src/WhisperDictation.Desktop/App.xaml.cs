@@ -26,6 +26,7 @@ public partial class App : Application
     private OverlayWindow? overlay;
     private MainViewModel? viewModel;
     private DispatcherTimer? overlayTimer;
+    private DispatcherTimer? overlayPositionTimer;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -54,6 +55,8 @@ public partial class App : Application
             overlay = new() { DataContext = viewModel };
             overlayTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
             overlayTimer.Tick += (_, _) => { overlayTimer.Stop(); if (!viewModel.IsBusy) overlay.Hide(); };
+            overlayPositionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            overlayPositionTimer.Tick += (_, _) => overlay.PositionOnCursorScreen();
             viewModel.PropertyChanged += OnViewModelChanged;
             hotkeys.Triggered += action => Dispatcher.BeginInvoke(new Action(() => RunUiTask(() => viewModel.HandleHotkeyAsync(action))));
             hotkeys.CaptureKeyPressed += (modifiers, key) => Dispatcher.BeginInvoke(new Action(() => viewModel.CaptureHotkey(modifiers, key)));
@@ -135,11 +138,27 @@ public partial class App : Application
                 if (!viewModel.IsBusy) overlayTimer.Start();
             }
             else overlay!.Hide();
+            UpdateOverlayPositionTracking();
         }
+        if (e.PropertyName == nameof(MainViewModel.IsRecording))
+            UpdateOverlayPositionTracking();
         if (e.PropertyName == nameof(MainViewModel.Status) && tray is not null)
         {
             var text = UiText.Title + " · " + viewModel!.Status;
             tray.Text = text[..Math.Min(text.Length, 63)];
+        }
+    }
+
+    private void UpdateOverlayPositionTracking()
+    {
+        if (viewModel?.ShowOverlay == true && viewModel.IsRecording)
+        {
+            overlay?.PositionOnCursorScreen();
+            overlayPositionTimer?.Start();
+        }
+        else
+        {
+            overlayPositionTimer?.Stop();
         }
     }
 
@@ -167,6 +186,7 @@ public partial class App : Application
     {
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         overlayTimer?.Stop();
+        overlayPositionTimer?.Stop();
         hotkeys?.Dispose();
         transcriber?.Dispose();
         tray?.Dispose();

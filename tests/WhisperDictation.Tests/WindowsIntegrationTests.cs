@@ -73,7 +73,7 @@ public class WindowsIntegrationTests
         {
             using var engine = new WorkerTranscriber();
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                engine.PrepareAsync(modelPath, ComputeMode.Cpu, CancellationToken.None));
+                engine.PrepareAsync(modelPath, ComputeMode.Cpu, AppDefaults.DefaultLanguage, OutputMode.Transcribe, CancellationToken.None));
             Assert.Equal(UiText.InvalidModel, error.Message);
             Assert.False(engine.IsReady);
         }
@@ -85,7 +85,7 @@ public class WindowsIntegrationTests
     {
         using var engine = new WorkerTranscriber();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            engine.PrepareAsync("missing-model.bin", ComputeMode.Automatic, CancellationToken.None));
+            engine.PrepareAsync("missing-model.bin", ComputeMode.Automatic, AppDefaults.DefaultLanguage, OutputMode.Transcribe, CancellationToken.None));
         Assert.Equal(UiText.MissingModel, error.Message);
         Assert.False(engine.IsReady);
     }

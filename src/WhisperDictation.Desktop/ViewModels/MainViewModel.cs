@@ -23,7 +23,8 @@ public partial class MainViewModel : ObservableObject
     private AppSettings activeSettings;
     private HotkeyAction activeRecordingAction;
     private int nextWaveformBar;
-    private bool initialized;
+    private CancellationTokenSource? settingsSaveCancellation;
+    private bool isInitializing = true;
 
     [ObservableProperty] private string status = UiText.Idle;
     [ObservableProperty] private string lastText = "";
@@ -35,17 +36,22 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private ModelChoice selectedModel = ModelChoice.All[0];
     [ObservableProperty] private MicrophoneChoice? selectedMicrophone;
     [ObservableProperty] private ComputeChoice selectedCompute;
+    [ObservableProperty] private LanguageChoice selectedLanguage;
+    [ObservableProperty] private OutputModeChoice selectedOutputMode;
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private bool isRecording;
     [ObservableProperty] private bool showOverlay;
 
     public IReadOnlyList<ModelChoice> Models => ModelChoice.All;
+    public IReadOnlyList<LanguageChoice> Languages => LanguageChoice.All;
+    public IReadOnlyList<OutputModeChoice> OutputModes => OutputModeChoice.All;
     public IReadOnlyList<ComputeChoice> ComputeChoices { get; } =
     [new(ComputeMode.Automatic, UiText.AutomaticCompute), new(ComputeMode.Cpu, UiText.CpuCompute)];
     public ObservableCollection<MicrophoneChoice> Microphones { get; } = [];
     public ObservableCollection<HistoryEntry> History { get; } = [];
     public ObservableCollection<double> AudioWaveform { get; } = [3, 3, 3, 3, 3, 3, 3];
     public bool CanConfigure => !IsBusy;
+    public bool CanSelectModel => SelectedOutputMode.Mode == OutputMode.Transcribe;
     public bool HasText => !string.IsNullOrEmpty(LastText);
     public string HotkeyCaptureDisplay => IsCapturingHotkey ? UiText.HotkeyCapturePrompt : Hotkey;
 
@@ -59,13 +65,17 @@ public partial class MainViewModel : ObservableObject
         this.transcriber = transcriber;
         this.hotkeyService = hotkeyService;
         this.windowsStartupService = windowsStartupService ?? new();
+        settings = settings.WithCompatibleModel();
         activeSettings = settings;
         selectedCompute = ComputeChoices.First(choice => choice.Mode == settings.ComputeMode);
+        selectedLanguage = Languages.First(choice => choice.Code == settings.Language);
+        selectedOutputMode = OutputModes.First(choice => choice.Mode == settings.OutputMode);
         SelectedModel = Models.First(choice => choice.Kind == settings.SelectedModel);
         Hotkey = ActiveHotkey = settings.Hotkey;
         StartWithWindows = settings.StartWithWindows;
         RefreshMicrophones();
         SelectedMicrophone = Microphones.FirstOrDefault(choice => choice.Id == settings.MicrophoneId) ?? Microphones.First();
+        isInitializing = false;
         controller.Changed += UpdateState;
         controller.HistoryAdded += entry => History.Insert(0, entry);
     }
@@ -77,8 +87,8 @@ public partial class MainViewModel : ObservableObject
             foreach (var entry in await historyStore.ReadAsync()) History.Add(entry);
         }
         catch (Exception) { Status = UiText.HistoryReadFailed; }
-        await controller.PrepareAsync(settingsStore.GetModelPath(activeSettings.SelectedModel), activeSettings.ComputeMode);
-        initialized = true;
+        await controller.PrepareAsync(settingsStore.GetModelPath(activeSettings.SelectedModel), activeSettings.ComputeMode,
+            activeSettings.Language, activeSettings.OutputMode);
     }
 
     public async Task HandleHotkeyAsync(HotkeyAction action)
@@ -191,28 +201,39 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HotkeyCaptureDisplay));
     }
 
-    partial void OnSelectedModelChanged(ModelChoice value)
+    partial void OnSelectedOutputModeChanged(OutputModeChoice value)
     {
-        if (initialized && CanConfigure)
-            _ = ChangeModelAsync(value.Kind);
+        if (value.Mode == OutputMode.TranslateToEnglish)
+            SelectedModel = Models.Single(choice => choice.Kind == ModelKind.Large);
+        OnPropertyChanged(nameof(CanSelectModel));
+        ScheduleSettingsSave();
     }
 
-    private async Task ChangeModelAsync(ModelKind model)
+    partial void OnSelectedModelChanged(ModelChoice value) => ScheduleSettingsSave();
+    partial void OnSelectedComputeChanged(ComputeChoice value) => ScheduleSettingsSave();
+    partial void OnSelectedLanguageChanged(LanguageChoice value) => ScheduleSettingsSave();
+    partial void OnSelectedMicrophoneChanged(MicrophoneChoice? value) => ScheduleSettingsSave();
+    partial void OnStartWithWindowsChanged(bool value) => ScheduleSettingsSave();
+
+    private void ScheduleSettingsSave()
+    {
+        if (isInitializing)
+            return;
+        settingsSaveCancellation?.Cancel();
+        settingsSaveCancellation?.Dispose();
+        var cancellation = settingsSaveCancellation = new CancellationTokenSource();
+        _ = SaveSettingsAfterSelectionAsync(cancellation.Token);
+    }
+
+    private async Task SaveSettingsAfterSelectionAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var settings = activeSettings with { SelectedModel = model };
-            settingsStore.Save(settings);
-            activeSettings = settings;
-            await controller.PrepareAsync(settingsStore.GetModelPath(model), settings.ComputeMode);
+            await Task.Delay(250, cancellationToken);
+            if (!IsBusy)
+                await ApplySettingsAsync();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            initialized = false;
-            SelectedModel = Models.First(choice => choice.Kind == activeSettings.SelectedModel);
-            initialized = true;
-            Status = UiText.StorageFailed;
-        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     [RelayCommand(CanExecute = nameof(CanConfigure))]
@@ -225,14 +246,16 @@ public partial class MainViewModel : ObservableObject
         }
         try
         {
-            var settings = activeSettings with
+            var settings = (activeSettings with
             {
                 SelectedModel = SelectedModel.Kind,
                 ComputeMode = SelectedCompute.Mode,
+                Language = SelectedLanguage.Code,
+                OutputMode = SelectedOutputMode.Mode,
                 MicrophoneId = SelectedMicrophone?.Id ?? "",
                 Hotkey = Hotkey.Trim(),
                 StartWithWindows = StartWithWindows
-            };
+            }).WithCompatibleModel();
             var startupSettingChanged = settings.StartWithWindows != activeSettings.StartWithWindows;
             if (startupSettingChanged)
                 windowsStartupService.SetEnabled(settings.StartWithWindows);
@@ -247,12 +270,15 @@ public partial class MainViewModel : ObservableObject
                 throw;
             }
             var reloadEngine = settings.SelectedModel != activeSettings.SelectedModel
-                || settings.ComputeMode != activeSettings.ComputeMode || !transcriber.IsReady;
+                || settings.ComputeMode != activeSettings.ComputeMode
+                || settings.Language != activeSettings.Language || settings.OutputMode != activeSettings.OutputMode || !transcriber.IsReady;
             activeSettings = settings;
+            SelectedModel = Models.Single(choice => choice.Kind == settings.SelectedModel);
             hotkeyService.Update(chord!);
             ActiveHotkey = settings.Hotkey;
             if (reloadEngine)
-                await controller.PrepareAsync(settingsStore.GetModelPath(settings.SelectedModel), settings.ComputeMode);
+                await controller.PrepareAsync(settingsStore.GetModelPath(settings.SelectedModel), settings.ComputeMode,
+                    settings.Language, settings.OutputMode);
             else Status = UiText.SettingsSaved;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException

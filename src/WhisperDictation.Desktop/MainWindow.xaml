@@ -109,13 +109,24 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="{x:Static core:UiText.Model}" Style="{StaticResource FieldLabel}" />
-                            <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="Name" />
+                            <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="Name"
+                                      IsEnabled="{Binding CanSelectModel}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="{x:Static core:UiText.Engine}" Style="{StaticResource FieldLabel}" />
                             <ComboBox ItemsSource="{Binding ComputeChoices}" SelectedItem="{Binding SelectedCompute}" DisplayMemberPath="Name" />
                         </StackPanel>
                     </Grid>
+                    <TextBlock Text="{x:Static core:UiText.Language}" Style="{StaticResource FieldLabel}" />
+                    <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
+                              DisplayMemberPath="Name" Margin="0,0,0,4" />
+                    <TextBlock Text="{x:Static core:UiText.LanguageHelp}" Style="{StaticResource MutedText}"
+                               FontSize="11" Margin="0,0,0,14" />
+                    <TextBlock Text="{x:Static core:UiText.OutputMode}" Style="{StaticResource FieldLabel}" />
+                    <ComboBox ItemsSource="{Binding OutputModes}" SelectedItem="{Binding SelectedOutputMode}"
+                              DisplayMemberPath="Name" Margin="0,0,0,4" />
+                    <TextBlock Text="{x:Static core:UiText.OutputModeHelp}" Style="{StaticResource MutedText}"
+                               FontSize="11" Margin="0,0,0,14" />
                     <TextBlock Text="{x:Static core:UiText.Microphone}" Style="{StaticResource FieldLabel}" />
                     <DockPanel Margin="0,0,0,14">
                         <Button DockPanel.Dock="Right" Content="{x:Static core:UiText.RefreshMicrophones}"
@@ -131,9 +142,6 @@
                               IsChecked="{Binding StartWithWindows, Mode=TwoWay}" Margin="0,16,0,0" />
                     <TextBlock Text="{x:Static core:UiText.StartWithWindowsHelp}" Style="{StaticResource MutedText}"
                                FontSize="11" Margin="30,5,0,0" />
-                    <Button Content="{x:Static core:UiText.ApplySettings}" Command="{Binding ApplySettingsCommand}"
-                            HorizontalAlignment="Left" Background="{StaticResource PrimaryButtonBrush}"
-                            Foreground="{StaticResource PrimaryButtonTextBrush}" Margin="0,18,0,0" />
                 </StackPanel>
             </Border>
 
