@@ -31,18 +31,30 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        var logFile = Path.Combine(AppContext.BaseDirectory, "startup.log");
+        AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Unhandled AppDomain: {ev.ExceptionObject}\n");
+        DispatcherUnhandledException += (s, ev) =>
+            File.AppendAllText(logFile, $"[{DateTime.Now}] DispatcherUnhandled: {ev.Exception}\n");
+        TaskScheduler.UnobservedTaskException += (s, ev) =>
+            File.AppendAllText(logFile, $"[{DateTime.Now}] UnobservedTask: {ev.Exception}\n");
+
+        File.AppendAllText(logFile, $"[{DateTime.Now}] OnStartup started with args: {string.Join(" ", e.Args)}\n");
         var startInBackground = e.Args.Contains(AppDefaults.BackgroundLaunchArgument, StringComparer.OrdinalIgnoreCase);
         instanceMutex = new Mutex(true, "Local\\WhisperDictation", out ownsMutex);
         if (!ownsMutex)
         {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Mutex already owned. Exiting.\n");
             MessageBox.Show(UiText.AlreadyRunning, UiText.Title);
             Shutdown();
             return;
         }
         try
         {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Loading settings...\n");
             var store = new SettingsStore(AppContext.BaseDirectory);
             var settings = store.Load();
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Settings loaded. Initializing stores...\n");
             var history = new HistoryStore(store.DataDirectory);
             HotkeyChord.TryParse(settings.Hotkey, out var chord);
             hotkeys = new(chord!);
@@ -67,9 +79,12 @@ public partial class App : Application
             SystemEvents.SessionSwitch += OnSessionSwitch;
             SessionEnding += (_, _) => transcriber.Reset();
             InitializeTray();
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Tray initialized. Showing window...\n");
             if (!startInBackground)
                 window.Show();
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Initializing viewModel...\n");
             await viewModel.InitializeAsync();
+            File.AppendAllText(logFile, $"[{DateTime.Now}] ViewModel initialized successfully.\n");
             // Optional smoke-test switch closes cleanly without recording or model downloads.
             if (e.Args.Contains("--smoke-test", StringComparer.Ordinal))
             {
@@ -78,8 +93,9 @@ public partial class App : Application
                 await QuitAsync();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Exception: {ex}\n");
             MessageBox.Show(UiText.StorageFailed, UiText.Title, MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
@@ -172,6 +188,7 @@ public partial class App : Application
 
     private async Task QuitAsync()
     {
+        File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "startup.log"), $"[{DateTime.Now}] QuitAsync called\n");
         if (exiting) return;
         exiting = true;
         hotkeys?.Dispose();
@@ -184,6 +201,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "startup.log"), $"[{DateTime.Now}] OnExit called. ExitCode={e.ApplicationExitCode}\n");
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         overlayTimer?.Stop();
         overlayPositionTimer?.Stop();

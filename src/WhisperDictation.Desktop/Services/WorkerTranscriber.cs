@@ -69,9 +69,14 @@ public sealed class WorkerTranscriber : ITranscriber, IDisposable
 
     private async Task StartWorkerAsync(bool useGpu, CancellationToken cancellationToken)
     {
+        var logFile = Path.Combine(AppContext.BaseDirectory, "startup.log");
+        File.AppendAllText(logFile, $"[{DateTime.Now}] StartWorkerAsync (useGpu={useGpu})\n");
         var workerPath = Path.Combine(AppContext.BaseDirectory, "worker", AppDefaults.WorkerFileName);
         if (!File.Exists(workerPath))
+        {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Worker not found at {workerPath}\n");
             throw new InvalidOperationException(UiText.WorkerFailed);
+        }
         var pipeName = "WhisperDictation-" + Guid.NewGuid().ToString("N");
         pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -84,18 +89,28 @@ public sealed class WorkerTranscriber : ITranscriber, IDisposable
         foreach (var argument in new[] { pipeName, modelPath, useGpu ? "cuda" : "cpu", language,
                      outputMode.ToString(), Environment.ProcessId.ToString() })
             startInfo.ArgumentList.Add(argument);
+        File.AppendAllText(logFile, $"[{DateTime.Now}] Starting worker process with model={modelPath}...\n");
         process = Process.Start(startInfo) ?? throw new InvalidOperationException(UiText.WorkerFailed);
+        File.AppendAllText(logFile, $"[{DateTime.Now}] Worker process started (Pid={process.Id}). Waiting for pipe connection...\n");
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         connectTimeout.CancelAfter(AppDefaults.WorkerConnectTimeout);
         try { await pipe.WaitForConnectionAsync(connectTimeout.Token); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { throw new InvalidOperationException(UiText.WorkerFailed); }
+        {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Worker pipe connection timed out!\n");
+            throw new InvalidOperationException(UiText.WorkerFailed);
+        }
+        File.AppendAllText(logFile, $"[{DateTime.Now}] Worker pipe connected! Waiting for load response...\n");
         using var loadTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         loadTimeout.CancelAfter(AppDefaults.ModelLoadTimeout);
         WorkerResponse response;
         try { response = await WorkerProtocol.ReadMessageAsync(pipe, loadTimeout.Token); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { throw new InvalidOperationException(UiText.WorkerFailed); }
+        {
+            File.AppendAllText(logFile, $"[{DateTime.Now}] Worker model load timed out!\n");
+            throw new InvalidOperationException(UiText.WorkerFailed);
+        }
+        File.AppendAllText(logFile, $"[{DateTime.Now}] Worker response: Success={response.Success}, Engine={response.Engine}, Error={response.Error}\n");
         if (!response.Success)
             throw new InvalidOperationException(response.Error);
         usingGpu = useGpu;
