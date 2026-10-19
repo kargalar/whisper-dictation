@@ -62,6 +62,7 @@ public static class UiText
     public const string ModelNotReady = "Dictation is not ready yet. Wait for preparation to finish or restart the app.";
     public const string MicrophoneFailed = "Could not access the microphone. Check Windows microphone permissions and the selected device.";
     public const string MicrophoneLost = "The microphone disconnected. Recording was cancelled.";
+    public const string MicrophoneLostFallback = "The microphone disconnected. Switched to the default microphone.";
     public const string MicrophoneStopFailed = "Could not stop the microphone recording. Try again or select another microphone in Settings.";
     public const string InvalidHotkey = "Use a letter, number, Space, F1–F24, or keyboard symbol with Ctrl, Alt, Shift, or Win.";
     public const string WorkerFailed = "The speech engine did not respond. Restart the app and try again.";

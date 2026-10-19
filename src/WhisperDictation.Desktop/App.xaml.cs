@@ -19,6 +19,7 @@ public partial class App : Application
     private bool exiting;
     private GlobalHotkeyService? hotkeys;
     private AudioCaptureService? audio;
+    private AudioDeviceMonitor? deviceMonitor;
     private WorkerTranscriber? transcriber;
     private Forms.NotifyIcon? tray;
     private Icon? appIcon;
@@ -73,9 +74,14 @@ public partial class App : Application
             hotkeys.Triggered += action => Dispatcher.BeginInvoke(new Action(() => RunUiTask(() => viewModel.HandleHotkeyAsync(action))));
             hotkeys.CaptureKeyPressed += (modifiers, key) => Dispatcher.BeginInvoke(new Action(() => viewModel.CaptureHotkey(modifiers, key)));
             hotkeys.CaptureCancelled += () => Dispatcher.BeginInvoke(new Action(viewModel.CancelHotkeyCapture));
-            audio.DeviceLost += () => Dispatcher.BeginInvoke(new Action(() => RunUiTask(() => viewModel.CancelAsync(UiText.MicrophoneLost))));
+            audio.DeviceLost += () => Dispatcher.BeginInvoke(new Action(() => RunUiTask(viewModel.HandleMicrophoneLostAsync)));
             audio.LimitReached += () => Dispatcher.BeginInvoke(new Action(() => RunUiTask(viewModel.StopAsync)));
             audio.LevelChanged += level => Dispatcher.BeginInvoke(new Action(() => viewModel.SetAudioLevel(level)));
+            deviceMonitor = new();
+            deviceMonitor.DeviceUnavailable += deviceId =>
+                Dispatcher.BeginInvoke(new Action(() => viewModel.OnDeviceUnavailable(deviceId)));
+            deviceMonitor.DevicesChanged += () =>
+                Dispatcher.BeginInvoke(new Action(viewModel.OnDevicesChanged));
             SystemEvents.SessionSwitch += OnSessionSwitch;
             SessionEnding += (_, _) => transcriber.Reset();
             InitializeTray();
@@ -192,6 +198,7 @@ public partial class App : Application
         if (exiting) return;
         exiting = true;
         hotkeys?.Dispose();
+        deviceMonitor?.Dispose();
         if (viewModel is not null) await viewModel.CancelAsync();
         transcriber?.Dispose();
         if (audio is not null) await audio.DisposeAsync();
@@ -206,6 +213,7 @@ public partial class App : Application
         overlayTimer?.Stop();
         overlayPositionTimer?.Stop();
         hotkeys?.Dispose();
+        deviceMonitor?.Dispose();
         transcriber?.Dispose();
         tray?.Dispose();
         appIcon?.Dispose();

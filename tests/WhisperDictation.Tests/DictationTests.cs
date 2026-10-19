@@ -159,6 +159,75 @@ public class DictationTests
         Assert.Equal(UiText.HistoryWriteFailed, fixture.Controller.Status);
     }
 
+    [Fact]
+    public void SpecificMicrophoneFailureFallsBackToDefaultMicrophoneAndStartsRecording()
+    {
+        var fixture = new Fixture();
+        var fallbackCalled = false;
+        fixture.Controller.MicrophoneFallback += () => fallbackCalled = true;
+        fixture.Audio.FailStartForDevice = id => id == "broken-mic";
+
+        fixture.Controller.Start(new() { MicrophoneId = "broken-mic" });
+
+        Assert.True(fallbackCalled);
+        Assert.Equal(2, fixture.Audio.StartCalls);
+        Assert.Equal("", fixture.Audio.LastMicrophoneId);
+        Assert.Equal(DictationState.Recording, fixture.Controller.State);
+        Assert.Equal(UiText.Listening, fixture.Controller.Status);
+    }
+
+    [Fact]
+    public void MainViewModelSwitchesToDefaultWhenSelectedDeviceBecomesUnavailable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Whisper-mic-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = new Fixture();
+            var store = new SettingsStore(root);
+            store.Save(new() { MicrophoneId = "usb-mic-xyz" });
+            HotkeyChord.TryParse(AppDefaults.DefaultHotkey, out var chord);
+            using var hotkeys = new GlobalHotkeyService(chord!);
+            var viewModel = new MainViewModel(store, fixture.History, fixture.Controller, fixture.Engine, hotkeys, new() { MicrophoneId = "usb-mic-xyz" });
+
+            viewModel.OnDeviceUnavailable("usb-mic-xyz");
+
+            Assert.Equal("", viewModel.SelectedMicrophone?.Id);
+            Assert.Equal("", store.Load().MicrophoneId);
+            Assert.Equal(UiText.MicrophoneLostFallback, viewModel.Status);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MainViewModelHandlesMicrophoneLostAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Whisper-miclost-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fixture = new Fixture();
+            var store = new SettingsStore(root);
+            store.Save(new() { MicrophoneId = "usb-mic-xyz" });
+            HotkeyChord.TryParse(AppDefaults.DefaultHotkey, out var chord);
+            using var hotkeys = new GlobalHotkeyService(chord!);
+            var viewModel = new MainViewModel(store, fixture.History, fixture.Controller, fixture.Engine, hotkeys, new() { MicrophoneId = "usb-mic-xyz" });
+
+            fixture.Controller.Start(new() { MicrophoneId = "usb-mic-xyz" });
+            await viewModel.HandleMicrophoneLostAsync();
+
+            Assert.Equal(DictationState.Idle, fixture.Controller.State);
+            Assert.Equal("", viewModel.SelectedMicrophone?.Id);
+            Assert.Equal("", store.Load().MicrophoneId);
+            Assert.Equal(UiText.MicrophoneLostFallback, viewModel.Status);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class Fixture
     {
         public FakeAudio Audio { get; } = new();
@@ -175,8 +244,16 @@ public class DictationTests
         public event Action? LimitReached { add { } remove { } }
         public float[] Samples { get; set; } = Enumerable.Repeat(0.1f, AppDefaults.SampleRate).ToArray();
         public int StartCalls { get; private set; }
+        public string LastMicrophoneId { get; private set; } = "";
         public bool FailStop { get; set; }
-        public void Start(string microphoneId) => StartCalls++;
+        public Func<string, bool>? FailStartForDevice { get; set; }
+        public void Start(string microphoneId)
+        {
+            StartCalls++;
+            LastMicrophoneId = microphoneId;
+            if (FailStartForDevice?.Invoke(microphoneId) == true)
+                throw new InvalidOperationException(UiText.MicrophoneFailed);
+        }
         public Task<float[]> StopAsync() => FailStop ? throw new IOException(UiText.MicrophoneLost) : Task.FromResult(Samples);
     }
 

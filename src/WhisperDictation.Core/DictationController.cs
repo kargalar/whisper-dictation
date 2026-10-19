@@ -12,6 +12,7 @@ public sealed class DictationController(IAudioCapture audio, ITranscriber transc
     public bool IsBusy => State is DictationState.Loading or DictationState.Recording or DictationState.Transcribing;
     public event Action? Changed;
     public event Action<HistoryEntry>? HistoryAdded;
+    public event Action? MicrophoneFallback;
 
     public async Task PrepareAsync(string path, ComputeMode mode, string language = AppDefaults.DefaultLanguage,
         OutputMode outputMode = OutputMode.Transcribe)
@@ -44,7 +45,15 @@ public sealed class DictationController(IAudioCapture audio, ITranscriber transc
         {
             target = output.CaptureTarget();
             recordingModel = settings.SelectedModel;
-            audio.Start(settings.MicrophoneId);
+            try
+            {
+                audio.Start(settings.MicrophoneId);
+            }
+            catch when (!string.IsNullOrEmpty(settings.MicrophoneId))
+            {
+                audio.Start("");
+                MicrophoneFallback?.Invoke();
+            }
             SetState(DictationState.Recording, UiText.Listening);
         }
         catch (Exception) { SetState(DictationState.Error, UiText.MicrophoneFailed); }

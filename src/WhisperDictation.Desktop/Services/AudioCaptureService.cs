@@ -48,6 +48,8 @@ public sealed class AudioCaptureService : IAudioCapture, IAsyncDisposable
             {
                 using var enumerator = new MMDeviceEnumerator();
                 device = enumerator.GetDevice(microphoneId);
+                if (device.State != DeviceState.Active)
+                    throw new InvalidOperationException(UiText.MicrophoneFailed);
                 builder.WithDevice(device);
             }
             buffer = new MemoryStream();

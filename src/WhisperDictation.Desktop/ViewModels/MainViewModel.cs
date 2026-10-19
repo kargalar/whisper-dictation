@@ -78,6 +78,7 @@ public partial class MainViewModel : ObservableObject
         isInitializing = false;
         controller.Changed += UpdateState;
         controller.HistoryAdded += entry => History.Insert(0, entry);
+        controller.MicrophoneFallback += () => SwitchToDefaultMicrophone(UiText.MicrophoneLostFallback);
     }
 
     public async Task InitializeAsync()
@@ -287,14 +288,18 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanConfigure))]
-    private void RefreshMicrophones()
+    public void RefreshMicrophones()
     {
         try
         {
-            var oldId = SelectedMicrophone?.Id;
-            Microphones.Clear();
-            foreach (var choice in AudioCaptureService.GetMicrophones()) Microphones.Add(choice);
-            SelectedMicrophone = Microphones.FirstOrDefault(choice => choice.Id == oldId) ?? Microphones.First();
+            var currentList = AudioCaptureService.GetMicrophones();
+            var targetId = SelectedMicrophone?.Id ?? activeSettings.MicrophoneId;
+            if (!Microphones.SequenceEqual(currentList))
+            {
+                Microphones.Clear();
+                foreach (var choice in currentList) Microphones.Add(choice);
+            }
+            SelectedMicrophone = Microphones.FirstOrDefault(choice => choice.Id == targetId) ?? Microphones.First();
         }
         catch (Exception)
         {
@@ -302,6 +307,54 @@ public partial class MainViewModel : ObservableObject
             SelectedMicrophone = Microphones.First();
             Status = UiText.MicrophoneFailed;
         }
+    }
+
+    public void SwitchToDefaultMicrophone(string? statusMessage = null)
+    {
+        try
+        {
+            RefreshMicrophones();
+            var defaultMic = Microphones.FirstOrDefault(choice => string.IsNullOrEmpty(choice.Id))
+                ?? new MicrophoneChoice("", UiText.DefaultMicrophone);
+            SelectedMicrophone = defaultMic;
+            var updatedSettings = activeSettings with { MicrophoneId = "" };
+            activeSettings = updatedSettings;
+            try { settingsStore.Save(updatedSettings); }
+            catch (Exception) { }
+            if (!string.IsNullOrEmpty(statusMessage))
+                Status = statusMessage;
+        }
+        catch (Exception)
+        {
+            Status = UiText.MicrophoneFailed;
+        }
+    }
+
+    public async Task HandleMicrophoneLostAsync()
+    {
+        await CancelAsync(UiText.MicrophoneLostFallback);
+        SwitchToDefaultMicrophone(UiText.MicrophoneLostFallback);
+    }
+
+    public void OnDeviceUnavailable(string deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId))
+            return;
+        if (string.Equals(activeSettings.MicrophoneId, deviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchToDefaultMicrophone(UiText.MicrophoneLostFallback);
+        }
+        else
+        {
+            RefreshMicrophones();
+        }
+    }
+
+    public void OnDevicesChanged()
+    {
+        if (IsRecording || IsCapturingHotkey)
+            return;
+        RefreshMicrophones();
     }
 
     [RelayCommand] private void CopyLast() => CopyText(LastText);
